@@ -3,7 +3,8 @@ import json
 from datetime import date
 import re
 
-## getting abstracts out of notion takes way too long. 
+## add dates to uploads so that it's harder to re-upload duplicates by mistake
+## 
 
 today = date.today().strftime("%Y-%m-%d")
 
@@ -18,8 +19,8 @@ notionHeaders = {
 notionDatabaseId = "0b3a840375e04b9bbe2c2ec98729f132"
 
 
-interesting_categories = ["biophysics", "synthetic biology", "cell biology","genetics", "genomics","biochemistry", "molecular biology"]
-sometimes_interesting_categories = ["bioengineering","bioinformatics","systems biology"]
+#interesting_categories = ["biophysics", "synthetic biology", "cell biology","genetics", "genomics","biochemistry", "molecular biology"]
+interesting_categories = ["bioengineering","bioinformatics","systems biology"]
 
 
 
@@ -72,7 +73,8 @@ def query_bioRxiv(published_after,published_before):
 		paper.pop("jatsxml")
 
 
-
+	with open('./biorxiv_db.json', 'w', encoding='utf8') as f: ## saves in notion format, doesn't include abstracts.
+		json.dump(filtered_collection, f, ensure_ascii=False)
 	#print(json.dumps(filtered_collection,indent=4))
 	#print(messages)
 	#print(len(filtered_collection))
@@ -243,6 +245,15 @@ def create_paper_in_notion(databaseId, notionHeaders,paper):
 					}
 				]
 			},
+			"Date Uploaded": {
+				"rich_text": [
+					{
+						"text": {
+							"content": paper["date"]
+						}
+					}
+				]
+			},
 			"URL": {
 				"url": paper["url"]
 			},
@@ -327,7 +338,6 @@ def create_paper_in_notion(databaseId, notionHeaders,paper):
 		print("error!! stopping it now.")
 		quit()
 	
-
 
 
 def update_page(pageId, notionHeaders):
@@ -423,12 +433,13 @@ def translate_notion_to_bioRxiv_format(notionJson):
 		biorxiv_entry = {}
 		entry = notionJson[i]
 		#print_pretty_json(entry)
-		biorxiv_entry["abstract_property"] = entry["properties"]["Abstract"]["rich_text"][0]["plain_text"]
+		#biorxiv_entry["abstract_property"] = entry["properties"]["Abstract"]["rich_text"][0]["plain_text"]
 		biorxiv_entry["category"] = entry["properties"]["Category"]["rich_text"][0]["plain_text"]
 		biorxiv_entry["authors"] = entry["properties"]["Authors"]["rich_text"][0]["plain_text"]
 		biorxiv_entry["author_corresponding_institution"] = entry["properties"]["Author Corresponding Institution"]["rich_text"][0]["plain_text"]
 		biorxiv_entry["author_corresponding"] = entry["properties"]["Corresponding Author"]["rich_text"][0]["plain_text"]
 		biorxiv_entry["doi"] = entry["properties"]["DOI"]["rich_text"][0]["plain_text"]
+		biorxiv_entry["date"] = entry["properties"]["Date Uploaded"]["rich_text"][0]["plain_text"]
 		biorxiv_entry["url"] = entry["properties"]["URL"]["url"]
 		biorxiv_entry["title"] = entry["properties"]["Title"]["title"][0]["plain_text"]
 		if entry["properties"]["Relevance Score"].get("select") is not None:
@@ -438,7 +449,7 @@ def translate_notion_to_bioRxiv_format(notionJson):
 
 		#biorxiv_entry["abstract"] = get_abstract(entry["id"],notionHeaders)
 		biorxiv_entry["abstract"] = get_abstract_from_biorxiv(biorxiv_entry["doi"])
-		print_pretty_json(biorxiv_entry)
+		#print_pretty_json(biorxiv_entry)
 		reformatted_db.append(biorxiv_entry)
 	return reformatted_db
 
@@ -450,35 +461,27 @@ def get_abstract_from_biorxiv(doi):
 	abstract = r.json()["collection"][-1]["abstract"] ## grabs the highest version #, if multiple docs exist for same doi.
 	return abstract
 
-#with open('db.json','r') as openfile:	json_object = json.load(openfile)
-#notion_db = json_object['results']
 
-
-#revised_db = translate_notion_to_bioRxiv_format(notion_db)
-#print("reading page")
-#page = readPage("f7412817a8a0444ba4f72828cc47ec46",notionHeaders)
-#print(page)
-
-#print(json.dumps(revised_db,indent=4))
-#papers = query_bioRxiv("2022-11-28","2022-11-28")
-#print(json.dumps(papers,indent=2))
-
-#for paper in papers:
-#	create_paper_in_notion(notionDatabaseId,notionHeaders,paper)
+def sync_biorxiv_to_notion(published_after,published_before):
+	papers = query_bioRxiv(published_after,published_before)
+	for paper in papers:
+		create_paper_in_notion(notionDatabaseId, notionHeaders,paper)
 
 
 
-#for paper in papers:
-#	createPaper(databaseId,headers,paper)
 
-readDatabase(notionDatabaseId,notionHeaders)
-#createPage(databaseId,headers)
+#query_bioRxiv("2022-11-28","2022-11-28")
+sync_biorxiv_to_notion("2022-11-23","2022-11-23")
+#readDatabase(notionDatabaseId,notionHeaders)
+
 
 ## fine tune model using title, authors, author_corresponding, author_corresponding_institution, category, abstract that autocompletes "interest score: X" based on some representative scores.
 
+## or do an embedding of the abstracts, then train sklearn random forest classifier (see gpt3)
+
 ## for each request that passes the above criteria, prompt gpt3 to see if it would be interesting. 
 ## include server, institution name, abstract, category
-#for paper in filtered_collection:
+
 
 
 
