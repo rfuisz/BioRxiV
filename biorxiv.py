@@ -3,6 +3,8 @@ import json
 from datetime import date
 import re
 
+## getting abstracts out of notion takes way too long. 
+## grab abstracts from this endpoint instead: https://api.biorxiv.org/details/biorxiv/10.1101/339747
 
 today = date.today().strftime("%Y-%m-%d")
 
@@ -82,13 +84,12 @@ def query_bioRxiv(published_after,published_before):
 
 def readDatabase(databaseId, notionHeaders):
 	readUrl = f"https://api.notion.com/v1/databases/{databaseId}/query"
-	print("requesting read")
+	print("requesting notion db")
 	res = requests.request("POST", readUrl, headers=notionHeaders)
-	print("request received")
 	data = res.json()
 
 	print(res.status_code)
-	print(json.dumps(res.json(),indent=2))
+	#print(json.dumps(res.json(),indent=2))
 
 	with open('./notion_db.json', 'w', encoding='utf8') as f: ## saves in notion format, doesn't include abstracts.
 		json.dump(data, f, ensure_ascii=False)
@@ -97,10 +98,11 @@ def readDatabase(databaseId, notionHeaders):
 	with open('./biorxiv_from_notion_db.json', 'w', encoding='utf8') as f:
 		json.dump(data, f, ensure_ascii=False)	
 	print("notion database fully downloaded.")
-def get_abstract(pageId,notionHeaders):
+def get_abstract_from_notion(pageId,notionHeaders):
 	print("getting abstract!")
 	url = "https://api.notion.com/v1/blocks/"+pageId + "/children"
 	res = requests.get(url, headers=notionHeaders)
+	print(res.json())
 	abstract_text_blocks = res.json()["results"]
 	text_blocks= []
 	for block in abstract_text_blocks:
@@ -110,7 +112,6 @@ def get_abstract(pageId,notionHeaders):
 		#print(block_text)
 		#print("next block:")
 	return "\n".join(text_blocks)
-
 
 def createPage(databaseId, notionHeaders):
 	print("creating page")
@@ -436,12 +437,17 @@ def translate_notion_to_bioRxiv_format(notionJson):
 		else:
 			biorxiv_entry["relevance"] = ""
 
-		biorxiv_entry["abstract"] = get_abstract(entry["id"],notionHeaders)
-		
+		#biorxiv_entry["abstract"] = get_abstract(entry["id"],notionHeaders)
+		biorxiv_entry["abstract"] = get_abstract_from_biorxiv(biorxiv_entry["doi"])
 		#print_pretty_json(biorxiv_entry)
 	return reformatted_db
 
-
+def get_abstract_from_biorxiv(doi):
+	url = "https://api.biorxiv.org/details/biorxiv/"+doi
+	r = requests.get(url)
+	print(json.dumps(r.json(),indent=2))
+	abstract = r.json()["collection"][0]["abstract"]
+	return abstract
 #with open('db.json','r') as openfile:	json_object = json.load(openfile)
 #notion_db = json_object['results']
 
