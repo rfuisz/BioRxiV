@@ -18,7 +18,7 @@ notionDatabaseId = "0b3a840375e04b9bbe2c2ec98729f132"
 
 
 interesting_categories = ["biophysics", "synthetic biology", "cell biology","genetics", "genomics","biochemistry", "molecular biology"]
-sometimes_interesting_categories = [""]
+sometimes_interesting_categories = ["bioengineering","bioinformatics","systems biology"]
 
 
 
