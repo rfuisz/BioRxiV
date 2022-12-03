@@ -4,7 +4,11 @@ from datetime import date
 import re
 
 ## add dates to uploads so that it's harder to re-upload duplicates by mistake
-## 
+## don't upload duplicates: 
+#### query the notion db, translate into the simple json
+#### using json, make a list of DOIs
+#### for loop through papers list, remove any that have DOIs in the list
+#### upload those papers.
 
 today = date.today().strftime("%Y-%m-%d")
 
@@ -19,8 +23,8 @@ notionHeaders = {
 notionDatabaseId = "0b3a840375e04b9bbe2c2ec98729f132"
 
 
-#interesting_categories = ["biophysics", "synthetic biology", "cell biology","genetics", "genomics","biochemistry", "molecular biology"]
-interesting_categories = ["bioengineering","bioinformatics","systems biology"]
+interesting_categories = ["bioengineering","bioinformatics","systems biology","biophysics", "synthetic biology", "cell biology","genetics", "genomics","biochemistry", "molecular biology"]
+
 
 
 
@@ -99,6 +103,7 @@ def readDatabase(databaseId, notionHeaders):
 	with open('./biorxiv_from_notion_db.json', 'w', encoding='utf8') as f:
 		json.dump(revised_db, f, ensure_ascii=False)	
 	print("notion database fully downloaded.")
+	return revised_db
 def get_abstract_from_notion(pageId,notionHeaders): ## extremely slow
 	print("getting abstract!")
 	url = "https://api.notion.com/v1/blocks/"+pageId + "/children"
@@ -439,9 +444,13 @@ def translate_notion_to_bioRxiv_format(notionJson):
 		biorxiv_entry["author_corresponding_institution"] = entry["properties"]["Author Corresponding Institution"]["rich_text"][0]["plain_text"]
 		biorxiv_entry["author_corresponding"] = entry["properties"]["Corresponding Author"]["rich_text"][0]["plain_text"]
 		biorxiv_entry["doi"] = entry["properties"]["DOI"]["rich_text"][0]["plain_text"]
-		biorxiv_entry["date"] = entry["properties"]["Date Uploaded"]["rich_text"][0]["plain_text"]
 		biorxiv_entry["url"] = entry["properties"]["URL"]["url"]
 		biorxiv_entry["title"] = entry["properties"]["Title"]["title"][0]["plain_text"]
+		print_pretty_json(entry["properties"]["Date Uploaded"].get("rich_text"))
+		if entry["properties"]["Date Uploaded"].get("rich_text") is not None:
+			biorxiv_entry["date"] = entry["properties"]["Date Uploaded"]["rich_text"][0]["plain_text"]
+		else:
+			biorxiv_entry["date"] = ""
 		if entry["properties"]["Relevance Score"].get("select") is not None:
 			biorxiv_entry["relevance"] = entry["properties"]["Relevance Score"].get("select").get("name")
 		else:
@@ -463,8 +472,19 @@ def get_abstract_from_biorxiv(doi):
 
 
 def sync_biorxiv_to_notion(published_after,published_before):
+	converted_notion_db = readDatabase(notionDatabaseId,notionHeaders)
+	doi_list = []
+	for paper in converted_notion_db:
+		doi_list.append(paper["doi"])
 	papers = query_bioRxiv(published_after,published_before)
+	non_duplicate_papers = []
 	for paper in papers:
+		if paper['doi'] not in doi_list:
+			non_duplicate_papers = paper
+		else:
+			print("This DOI is already in notion!" + paper['doi'])
+
+	for paper in non_duplicate_papers:
 		create_paper_in_notion(notionDatabaseId, notionHeaders,paper)
 
 
