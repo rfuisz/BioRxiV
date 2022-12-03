@@ -27,7 +27,6 @@ notionHeaders = {
 
 
 
-
 def query_bioRxiv(published_after,published_before):
 	## query something like "https://api.biorxiv.org/details/biorxiv/2022-11-30/2022-11-30"
 	print("querying biorxiv for between these dates: " + published_after + " and "+ published_before)
@@ -48,7 +47,7 @@ def query_bioRxiv(published_after,published_before):
 		#print("not enough so reasking")
 		#print(messages)
 	#print(collection)
-	print(json.dumps(collection,indent=2))
+	#print(json.dumps(collection,indent=2))
 	#print(json.dumps(collection,indent=2))
 
 	## for each request, check the publication date against the "published since" date and confirm category matches "interesting categories"
@@ -83,29 +82,6 @@ def query_bioRxiv(published_after,published_before):
 	#print(len(filtered_collection))
 	#print(type(filtered_collection))
 	return filtered_collection
-
-
-
-def readDatabase(databaseId, notionHeaders, skip_abstracts=False):
-	readUrl = f"https://api.notion.com/v1/databases/{databaseId}/query"
-	print("requesting notion db")
-	res = requests.request("POST", readUrl, headers=notionHeaders)
-	data = res.json()
-
-	print(res.status_code)
-	#print(json.dumps(res.json(),indent=2))
-
-	with open('./notion_db.json', 'w', encoding='utf8') as f: ## saves in notion format, doesn't include abstracts.
-		json.dump(data, f, ensure_ascii=False)
-
-	revised_db = translate_notion_to_bioRxiv_format(data["results"],skip_abstracts)
-	if skip_abstracts:
-		print("not collecting abstracts, not updating the local db json.")
-	else:
-		with open('./biorxiv_from_notion_db.json', 'w', encoding='utf8') as f:
-			json.dump(revised_db, f, ensure_ascii=False)	
-	print("notion database fully downloaded.")
-	return revised_db
 def get_abstract_from_notion(pageId,notionHeaders): ## extremely slow
 	print("getting abstract!")
 	url = "https://api.notion.com/v1/blocks/"+pageId + "/children"
@@ -120,7 +96,6 @@ def get_abstract_from_notion(pageId,notionHeaders): ## extremely slow
 		#print(block_text)
 		#print("next block:")
 	return "\n".join(text_blocks)
-
 def createPage(databaseId, notionHeaders):
 	print("creating page")
 	createUrl = 'https://api.notion.com/v1/pages'
@@ -207,8 +182,6 @@ def createPage(databaseId, notionHeaders):
 	print("request sent")
 	print(res.status_code)
 	print(json.dumps(res.json(),indent=2))
-
-
 def updatePage(pageId, notionHeaders):
 	updateUrl = f"https://api.notion.com/v1/pages/{pageId}"
 
@@ -343,9 +316,6 @@ def create_paper_in_notion(databaseId, notionHeaders,paper):
 	if res.status_code == 400:
 		print("error!! stopping it now.")
 		quit()
-	
-
-
 def update_page(pageId, notionHeaders):
 	updateUrl = f"https://api.notion.com/v1/pages/{pageId}"
 
@@ -368,7 +338,6 @@ def update_page(pageId, notionHeaders):
 
 	print(response.status_code)
 	print(response.text)
-
 def split_into_sentences(text):
 	alphabets= "([A-Za-z])"
 	prefixes = "(Mr|St|Mrs|Ms|Dr)[.]"
@@ -429,7 +398,6 @@ def break_up_paragraphs(original_paragraph):
 		else:
 			return paragraphs_A
 		#print(len(final_paragraphs))
-
 def print_pretty_json(ugly_json):
 	print(json.dumps(ugly_json,indent=2))
 def translate_notion_to_bioRxiv_format(notionJson, skip_abstracts=False):
@@ -464,7 +432,6 @@ def translate_notion_to_bioRxiv_format(notionJson, skip_abstracts=False):
 		#print_pretty_json(biorxiv_entry)
 		reformatted_db.append(biorxiv_entry)
 	return reformatted_db
-
 def get_abstract_from_biorxiv(doi):
 	## grabs abstracts from this endpoint: https://api.biorxiv.org/details/biorxiv/10.1101/339747
 	url = "https://api.biorxiv.org/details/biorxiv/"+doi
@@ -472,7 +439,6 @@ def get_abstract_from_biorxiv(doi):
 	#print(json.dumps(r.json(),indent=2))
 	abstract = r.json()["collection"][-1]["abstract"] ## grabs the highest version #, if multiple docs exist for same doi.
 	return abstract
-
 
 def sync_biorxiv_to_notion(published_after,published_before):
 	converted_notion_db = readDatabase(notionDatabaseId,notionHeaders, skip_abstracts = True)
@@ -488,6 +454,26 @@ def sync_biorxiv_to_notion(published_after,published_before):
 			print("This DOI is already in notion!" + paper['doi'])
 	for paper in non_duplicate_papers:
 		create_paper_in_notion(notionDatabaseId, notionHeaders,paper)
+def readDatabase(databaseId, notionHeaders, skip_abstracts=False):
+	readUrl = f"https://api.notion.com/v1/databases/{databaseId}/query"
+	print("requesting notion db")
+	res = requests.request("POST", readUrl, headers=notionHeaders)
+	data = res.json()
+
+	print(res.status_code)
+	#print(json.dumps(res.json(),indent=2))
+
+	with open('./notion_db.json', 'w', encoding='utf8') as f: ## saves in notion format, doesn't include abstracts.
+		json.dump(data, f, ensure_ascii=False)
+
+	revised_db = translate_notion_to_bioRxiv_format(data["results"],skip_abstracts)
+	if skip_abstracts:
+		print("not collecting abstracts, not updating the local db json.")
+	else:
+		with open('./biorxiv_from_notion_db.json', 'w', encoding='utf8') as f:
+			json.dump(revised_db, f, ensure_ascii=False)	
+	print("notion database fully downloaded.")
+	return revised_db
 
 
 
