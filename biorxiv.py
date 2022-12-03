@@ -23,7 +23,7 @@ sometimes_interesting_categories = [""]
 
 
 
-def queryBioRxiv(published_after,published_before):
+def query_bioRxiv(published_after,published_before):
 	## query something like "https://api.biorxiv.org/details/biorxiv/2022-11-30/2022-11-30"
 	print("querying biorxiv for between these dates: " + published_after + " and "+ published_before)
 	cursor = 0
@@ -92,6 +92,12 @@ def readDatabase(databaseId, notionHeaders):
 
 	with open('./db.json', 'w', encoding='utf8') as f:
 		json.dump(data, f, ensure_ascii=False)
+def readPage(pageId,notionHeaders):
+	url = "https://api.notion.com/v1/blocks/"+pageId + "/children"
+	response = requests.get(url, headers=notionHeaders)
+
+	return response.text
+
 
 def createPage(databaseId, notionHeaders):
 	print("creating page")
@@ -197,7 +203,7 @@ def updatePage(pageId, notionHeaders):
 			}        
 		}
 	}
-def createPaperInNotion(databaseId, notionHeaders,paper):
+def create_paper_in_notion(databaseId, notionHeaders,paper):
 	createUrl = 'https://api.notion.com/v1/pages'
 
 	newPageData = {
@@ -310,7 +316,8 @@ def createPaperInNotion(databaseId, notionHeaders,paper):
 	
 
 
-def updatePage(pageId, notionHeaders):
+
+def update_page(pageId, notionHeaders):
 	updateUrl = f"https://api.notion.com/v1/pages/{pageId}"
 
 	updateData = {
@@ -394,20 +401,56 @@ def break_up_paragraphs(original_paragraph):
 			return paragraphs_A
 		#print(len(final_paragraphs))
 
+def print_pretty_json(ugly_json):
+	print(json.dumps(ugly_json,indent=2))
+def translate_notion_to_bioRxiv_format(notionJson):
+	reformatted_db = notionJson
+	for i in range(len(notionJson)):
+
+		biorxiv_entry = {}
+		entry = notionJson[i]
+		print_pretty_json(entry)
+		biorxiv_entry["abstract_property"] = entry["properties"]["Abstract"]["rich_text"][0]["plain_text"]
+		biorxiv_entry["category"] = entry["properties"]["Category"]["rich_text"][0]["plain_text"]
+		biorxiv_entry["authors"] = entry["properties"]["Authors"]["rich_text"][0]["plain_text"]
+		biorxiv_entry["author_corresponding_institution"] = entry["properties"]["Author Corresponding Institution"]["rich_text"][0]["plain_text"]
+		biorxiv_entry["author_corresponding"] = entry["properties"]["Corresponding Author"]["rich_text"][0]["plain_text"]
+		biorxiv_entry["doi"] = entry["properties"]["DOI"]["rich_text"][0]["plain_text"]
+		biorxiv_entry["url"] = entry["properties"]["URL"]["url"]
+		biorxiv_entry["title"] = entry["properties"]["Title"]["title"][0]["plain_text"]
+		print_pretty_json(entry["properties"])
+		if entry["properties"]["Relevance Score"].get("select") is not None:
+			biorxiv_entry["relevance"] = entry["properties"]["Relevance Score"].get("select").get("name")
+		else:
+			biorxiv_entry["relevance"] = ""
+		
+		print_pretty_json(biorxiv_entry)
+	return reformatted_db
 
 
-#papers = queryBioRxiv("2022-11-28","2022-11-28")
+with open('db.json','r') as openfile:
+	json_object = json.load(openfile)
+notion_db = json_object['results']
+
+
+revised_db = translate_notion_to_bioRxiv_format(notion_db)
+print("reading page")
+page = readPage("f7412817a8a0444ba4f72828cc47ec46",notionHeaders)
+print_pretty_json(page)
+
+#print(json.dumps(revised_db,indent=4))
+#papers = query_bioRxiv("2022-11-28","2022-11-28")
 #print(json.dumps(papers,indent=2))
 
 #for paper in papers:
-#	createPaperInNotion(notionDatabaseId,notionHeaders,paper)
+#	create_paper_in_notion(notionDatabaseId,notionHeaders,paper)
 
 
 
 #for paper in papers:
 #	createPaper(databaseId,headers,paper)
 
-readDatabase(notionDatabaseId,notionHeaders)
+#readDatabase(notionDatabaseId,notionHeaders)
 #createPage(databaseId,headers)
 
 ## fine tune model using title, authors, author_corresponding, author_corresponding_institution, category, abstract that autocompletes "interest score: X" based on some representative scores.
