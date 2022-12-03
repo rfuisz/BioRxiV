@@ -13,17 +13,16 @@ import re
 today = date.today().strftime("%Y-%m-%d")
 
 token = "secret_Tx1aAu8K56ruGDox2o1Zpg7wShZfSRvAtqjkpKbY6M1"
+notionDatabaseId = "0b3a840375e04b9bbe2c2ec98729f132"
+interesting_categories = ["bioengineering","bioinformatics","systems biology","biophysics", "synthetic biology", "cell biology","genetics", "genomics","biochemistry", "molecular biology"]
+
+
+
 notionHeaders = {
 	"Authorization": "Bearer " + token,
 	"Content-Type": "application/json",
 	"Notion-Version": "2022-06-28"
 }
-
-
-notionDatabaseId = "0b3a840375e04b9bbe2c2ec98729f132"
-
-
-interesting_categories = ["bioengineering","bioinformatics","systems biology","biophysics", "synthetic biology", "cell biology","genetics", "genomics","biochemistry", "molecular biology"]
 
 
 
@@ -487,20 +486,14 @@ def sync_biorxiv_to_notion(published_after,published_before):
 			non_duplicate_papers.append(paper)
 		else:
 			print("This DOI is already in notion!" + paper['doi'])
-	print("non_duplicate_papers")
-	print_pretty_json(non_duplicate_papers)
 	for paper in non_duplicate_papers:
-		print("troublesome paper:")
-		print_pretty_json(paper)
-		print(type(paper))
-		print_pretty_json(paper["doi"])
 		create_paper_in_notion(notionDatabaseId, notionHeaders,paper)
 
 
 
 
 #query_bioRxiv("2022-11-28","2022-11-28")
-sync_biorxiv_to_notion("2022-11-22","2022-11-22")
+sync_biorxiv_to_notion("2022-11-22","2022-12-02")
 #readDatabase(notionDatabaseId,notionHeaders)
 
 
