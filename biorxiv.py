@@ -90,13 +90,25 @@ def readDatabase(databaseId, notionHeaders):
 	print(res.status_code)
 	print(json.dumps(res.json(),indent=2))
 
-	with open('./db.json', 'w', encoding='utf8') as f:
+	with open('./notion_db.json', 'w', encoding='utf8') as f:
 		json.dump(data, f, ensure_ascii=False)
-def readPage(pageId,notionHeaders):
-	url = "https://api.notion.com/v1/blocks/"+pageId + "/children"
-	response = requests.get(url, headers=notionHeaders)
 
-	return response.text
+	revised_db = translate_notion_to_bioRxiv_format(data["results"])
+	with open('./biorxiv_from_notion_db.json', 'w', encoding='utf8') as f:
+		json.dump(data, f, ensure_ascii=False)	
+def get_abstract(pageId,notionHeaders):
+	#print("getting abstract!")
+	url = "https://api.notion.com/v1/blocks/"+pageId + "/children"
+	res = requests.get(url, headers=notionHeaders)
+	abstract_text_blocks = res.json()["results"]
+	text_blocks= []
+	for block in abstract_text_blocks:
+		block_text = block["paragraph"]["rich_text"][0]["plain_text"]
+		#print_pretty_json(block)
+		text_blocks.append(block_text)
+		print(block_text)
+		print("next block:")
+	return "\n".join(text_blocks)
 
 
 def createPage(databaseId, notionHeaders):
@@ -409,7 +421,7 @@ def translate_notion_to_bioRxiv_format(notionJson):
 
 		biorxiv_entry = {}
 		entry = notionJson[i]
-		print_pretty_json(entry)
+		#print_pretty_json(entry)
 		biorxiv_entry["abstract_property"] = entry["properties"]["Abstract"]["rich_text"][0]["plain_text"]
 		biorxiv_entry["category"] = entry["properties"]["Category"]["rich_text"][0]["plain_text"]
 		biorxiv_entry["authors"] = entry["properties"]["Authors"]["rich_text"][0]["plain_text"]
@@ -418,25 +430,25 @@ def translate_notion_to_bioRxiv_format(notionJson):
 		biorxiv_entry["doi"] = entry["properties"]["DOI"]["rich_text"][0]["plain_text"]
 		biorxiv_entry["url"] = entry["properties"]["URL"]["url"]
 		biorxiv_entry["title"] = entry["properties"]["Title"]["title"][0]["plain_text"]
-		print_pretty_json(entry["properties"])
 		if entry["properties"]["Relevance Score"].get("select") is not None:
 			biorxiv_entry["relevance"] = entry["properties"]["Relevance Score"].get("select").get("name")
 		else:
 			biorxiv_entry["relevance"] = ""
+
+		biorxiv_entry["abstract"] = get_abstract(entry["id"],notionHeaders)
 		
 		print_pretty_json(biorxiv_entry)
 	return reformatted_db
 
 
-with open('db.json','r') as openfile:
-	json_object = json.load(openfile)
-notion_db = json_object['results']
+#with open('db.json','r') as openfile:	json_object = json.load(openfile)
+#notion_db = json_object['results']
 
 
-revised_db = translate_notion_to_bioRxiv_format(notion_db)
-print("reading page")
-page = readPage("f7412817a8a0444ba4f72828cc47ec46",notionHeaders)
-print_pretty_json(page)
+#revised_db = translate_notion_to_bioRxiv_format(notion_db)
+#print("reading page")
+#page = readPage("f7412817a8a0444ba4f72828cc47ec46",notionHeaders)
+#print(page)
 
 #print(json.dumps(revised_db,indent=4))
 #papers = query_bioRxiv("2022-11-28","2022-11-28")
@@ -450,7 +462,7 @@ print_pretty_json(page)
 #for paper in papers:
 #	createPaper(databaseId,headers,paper)
 
-#readDatabase(notionDatabaseId,notionHeaders)
+readDatabase(notionDatabaseId,notionHeaders)
 #createPage(databaseId,headers)
 
 ## fine tune model using title, authors, author_corresponding, author_corresponding_institution, category, abstract that autocompletes "interest score: X" based on some representative scores.
