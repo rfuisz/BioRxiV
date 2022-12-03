@@ -3,12 +3,6 @@ import json
 from datetime import date
 import re
 
-## note the biorxiv query function only filters through the first 100 results returned -- 
-## if that day has more than 100 results, it won't return them all.
-
-
-# if the abstract has a paragraph with >4000 words, it'll have issues.
-published_on = "2022-11-30"
 
 today = date.today().strftime("%Y-%m-%d")
 
@@ -29,15 +23,27 @@ sometimes_interesting_categories = [""]
 
 
 
-def queryBioRxiv(published_on):
+def queryBioRxiv(published_after,published_before):
 	## query something like "https://api.biorxiv.org/details/biorxiv/2022-11-30/2022-11-30"
-	print("querying biorxiv for the date: " + published_on)
-	r = requests.get("https://api.biorxiv.org/details/biorxiv/"+published_on+"/"+published_on)
+	print("querying biorxiv for between these dates: " + published_after + " and "+ published_before)
+	cursor = 0
+	r = requests.get("https://api.biorxiv.org/details/biorxiv/"+published_after+"/"+published_before+"/"+str(cursor))
 	messages = r.json()['messages']
 	collection = r.json()['collection']
+	#print(collection)
+	#print(messages)
 
-
-
+	while (messages[0]['total'] > 100+cursor):
+		cursor += 100
+		r = requests.get("https://api.biorxiv.org/details/biorxiv/"+published_after+"/"+published_before+"/"+str(cursor))
+		messages = r.json()['messages']
+		new_collection = r.json()['collection']
+		#print(new_collection)
+		collection = collection + new_collection
+		#print("not enough so reasking")
+		#print(messages)
+	#print(collection)
+	print(json.dumps(collection,indent=2))
 	#print(json.dumps(collection,indent=2))
 
 	## for each request, check the publication date against the "published since" date and confirm category matches "interesting categories"
@@ -67,6 +73,7 @@ def queryBioRxiv(published_on):
 
 
 	#print(json.dumps(filtered_collection,indent=4))
+	#print(messages)
 	#print(len(filtered_collection))
 	#print(type(filtered_collection))
 	return filtered_collection
@@ -389,18 +396,18 @@ def break_up_paragraphs(original_paragraph):
 
 
 
-papers = queryBioRxiv("2022-11-28")
+#papers = queryBioRxiv("2022-11-28","2022-11-28")
 #print(json.dumps(papers,indent=2))
 
-for paper in papers:
-	createPaperInNotion(notionDatabaseId,notionHeaders,paper)
+#for paper in papers:
+#	createPaperInNotion(notionDatabaseId,notionHeaders,paper)
 
 
 
 #for paper in papers:
 #	createPaper(databaseId,headers,paper)
 
-#readDatabase(databaseId,headers)
+readDatabase(notionDatabaseId,notionHeaders)
 #createPage(databaseId,headers)
 
 ## fine tune model using title, authors, author_corresponding, author_corresponding_institution, category, abstract that autocompletes "interest score: X" based on some representative scores.
