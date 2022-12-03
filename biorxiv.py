@@ -90,12 +90,13 @@ def readDatabase(databaseId, notionHeaders):
 	print(res.status_code)
 	print(json.dumps(res.json(),indent=2))
 
-	with open('./notion_db.json', 'w', encoding='utf8') as f:
+	with open('./notion_db.json', 'w', encoding='utf8') as f: ## saves in notion format, doesn't include abstracts.
 		json.dump(data, f, ensure_ascii=False)
 
 	revised_db = translate_notion_to_bioRxiv_format(data["results"])
 	with open('./biorxiv_from_notion_db.json', 'w', encoding='utf8') as f:
 		json.dump(data, f, ensure_ascii=False)	
+	print("notion database fully downloaded.")
 def get_abstract(pageId,notionHeaders):
 	#print("getting abstract!")
 	url = "https://api.notion.com/v1/blocks/"+pageId + "/children"
@@ -106,8 +107,8 @@ def get_abstract(pageId,notionHeaders):
 		block_text = block["paragraph"]["rich_text"][0]["plain_text"]
 		#print_pretty_json(block)
 		text_blocks.append(block_text)
-		print(block_text)
-		print("next block:")
+		#print(block_text)
+		#print("next block:")
 	return "\n".join(text_blocks)
 
 
@@ -437,7 +438,7 @@ def translate_notion_to_bioRxiv_format(notionJson):
 
 		biorxiv_entry["abstract"] = get_abstract(entry["id"],notionHeaders)
 		
-		print_pretty_json(biorxiv_entry)
+		#print_pretty_json(biorxiv_entry)
 	return reformatted_db
 
 
