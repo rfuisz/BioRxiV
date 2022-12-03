@@ -98,7 +98,7 @@ def readDatabase(databaseId, notionHeaders):
 		json.dump(data, f, ensure_ascii=False)	
 	print("notion database fully downloaded.")
 def get_abstract(pageId,notionHeaders):
-	#print("getting abstract!")
+	print("getting abstract!")
 	url = "https://api.notion.com/v1/blocks/"+pageId + "/children"
 	res = requests.get(url, headers=notionHeaders)
 	abstract_text_blocks = res.json()["results"]
