@@ -4,7 +4,6 @@ from datetime import date
 import re
 
 ## getting abstracts out of notion takes way too long. 
-## grab abstracts from this endpoint instead: https://api.biorxiv.org/details/biorxiv/10.1101/339747
 
 today = date.today().strftime("%Y-%m-%d")
 
@@ -96,9 +95,9 @@ def readDatabase(databaseId, notionHeaders):
 
 	revised_db = translate_notion_to_bioRxiv_format(data["results"])
 	with open('./biorxiv_from_notion_db.json', 'w', encoding='utf8') as f:
-		json.dump(data, f, ensure_ascii=False)	
+		json.dump(revised_db, f, ensure_ascii=False)	
 	print("notion database fully downloaded.")
-def get_abstract_from_notion(pageId,notionHeaders):
+def get_abstract_from_notion(pageId,notionHeaders): ## extremely slow
 	print("getting abstract!")
 	url = "https://api.notion.com/v1/blocks/"+pageId + "/children"
 	res = requests.get(url, headers=notionHeaders)
@@ -418,7 +417,7 @@ def break_up_paragraphs(original_paragraph):
 def print_pretty_json(ugly_json):
 	print(json.dumps(ugly_json,indent=2))
 def translate_notion_to_bioRxiv_format(notionJson):
-	reformatted_db = notionJson
+	reformatted_db = []
 	for i in range(len(notionJson)):
 
 		biorxiv_entry = {}
@@ -439,15 +438,18 @@ def translate_notion_to_bioRxiv_format(notionJson):
 
 		#biorxiv_entry["abstract"] = get_abstract(entry["id"],notionHeaders)
 		biorxiv_entry["abstract"] = get_abstract_from_biorxiv(biorxiv_entry["doi"])
-		#print_pretty_json(biorxiv_entry)
+		print_pretty_json(biorxiv_entry)
+		reformatted_db.append(biorxiv_entry)
 	return reformatted_db
 
 def get_abstract_from_biorxiv(doi):
+	## grabs abstracts from this endpoint: https://api.biorxiv.org/details/biorxiv/10.1101/339747
 	url = "https://api.biorxiv.org/details/biorxiv/"+doi
 	r = requests.get(url)
-	print(json.dumps(r.json(),indent=2))
-	abstract = r.json()["collection"][0]["abstract"]
+	#print(json.dumps(r.json(),indent=2))
+	abstract = r.json()["collection"][-1]["abstract"] ## grabs the highest version #, if multiple docs exist for same doi.
 	return abstract
+
 #with open('db.json','r') as openfile:	json_object = json.load(openfile)
 #notion_db = json_object['results']
 
