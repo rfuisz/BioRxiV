@@ -3,12 +3,20 @@ import json
 from datetime import date
 import re
 
+## currently checks to see if the doi is already in the notion
+## but doesn't check for duplicates within the payload.
+
+
 ## add dates to uploads so that it's harder to re-upload duplicates by mistake
 ## don't upload duplicates: 
 #### query the notion db, translate into the simple json
 #### using json, make a list of DOIs
 #### for loop through papers list, remove any that have DOIs in the list
 #### upload those papers.
+
+
+### get abstracts, titles, authors, affiliation, date, and optionally: tags, journals, using id:
+### https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=17284678
 
 today = date.today().strftime("%Y-%m-%d")
 
@@ -23,8 +31,6 @@ notionHeaders = {
 	"Content-Type": "application/json",
 	"Notion-Version": "2022-06-28"
 }
-
-
 
 
 def query_bioRxiv(published_after,published_before):
@@ -459,18 +465,26 @@ def readDatabase(databaseId, notionHeaders, skip_abstracts=False):
 	print("requesting notion db")
 	res = requests.request("POST", readUrl, headers=notionHeaders)
 	data = res.json()
+	results = data["results"]
+	while data['has_more']:
+		print("getting more data...")
+		next_cursor = data['next_cursor']
+		data = {'start_cursor':next_cursor}
+		res = requests.request("POST", readUrl, headers=notionHeaders,data = json.dumps(data))
+		data = res.json()
+		#print_pretty_json(data)
+		results = results + data["results"]
 
-	print(res.status_code)
 	#print(json.dumps(res.json(),indent=2))
 
 	with open('./notion_db.json', 'w', encoding='utf8') as f: ## saves in notion format, doesn't include abstracts.
-		json.dump(data, f, ensure_ascii=False)
+		json.dump(results, f, ensure_ascii=False)
 
-	revised_db = translate_notion_to_bioRxiv_format(data["results"],skip_abstracts)
+	revised_db = translate_notion_to_bioRxiv_format(results,skip_abstracts)
 	if skip_abstracts:
 		print("not collecting abstracts, not updating the local db json.")
 	else:
-		with open('./biorxiv_from_notion_db.json', 'w', encoding='utf8') as f:
+		with open('./biorxiv_from_notion_db.json', 'w', encoding='utf8') as f: ## saves in standard biorxiv style json
 			json.dump(revised_db, f, ensure_ascii=False)	
 	print("notion database fully downloaded.")
 	return revised_db
@@ -479,8 +493,8 @@ def readDatabase(databaseId, notionHeaders, skip_abstracts=False):
 
 
 #query_bioRxiv("2022-11-28","2022-11-28")
-sync_biorxiv_to_notion("2022-11-22","2022-12-02")
-#readDatabase(notionDatabaseId,notionHeaders)
+#sync_biorxiv_to_notion("2022-11-25","2022-12-03")
+readDatabase(notionDatabaseId,notionHeaders)
 
 
 ## fine tune model using title, authors, author_corresponding, author_corresponding_institution, category, abstract that autocompletes "interest score: X" based on some representative scores.
