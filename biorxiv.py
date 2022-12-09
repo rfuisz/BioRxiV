@@ -3,6 +3,12 @@ import json
 from datetime import date
 import re
 
+## secret token for fh: secret_8ibERlM89As4pGqvLzGqNFjyHQ9yXfEWo1BKdnjSshp
+## secret token for local Richard's notion: secret_Tx1aAu8K56ruGDox2o1Zpg7wShZfSRvAtqjkpKbY6M1
+
+## Future house database id: 49788118a4d346b78b589b70fb5af4ab
+## Local database id: 0b3a840375e04b9bbe2c2ec98729f132
+
 ## currently checks to see if the doi is already in the notion
 ## but doesn't check for duplicates within the payload.
 
@@ -20,10 +26,9 @@ import re
 
 today = date.today().strftime("%Y-%m-%d")
 
-token = "secret_Tx1aAu8K56ruGDox2o1Zpg7wShZfSRvAtqjkpKbY6M1"
-notionDatabaseId = "0b3a840375e04b9bbe2c2ec98729f132"
+token = "secret_8ibERlM89As4pGqvLzGqNFjyHQ9yXfEWo1BKdnjSshp"
+notionDatabaseId = "49788118a4d346b78b589b70fb5af4ab"
 interesting_categories = ["bioengineering","bioinformatics","systems biology","biophysics", "synthetic biology", "cell biology","genetics", "genomics","biochemistry", "molecular biology"]
-
 
 
 notionHeaders = {
@@ -31,7 +36,6 @@ notionHeaders = {
 	"Content-Type": "application/json",
 	"Notion-Version": "2022-06-28"
 }
-
 
 def query_bioRxiv(published_after,published_before):
 	## query something like "https://api.biorxiv.org/details/biorxiv/2022-11-30/2022-11-30"
@@ -452,6 +456,12 @@ def sync_biorxiv_to_notion(published_after,published_before):
 	for paper in converted_notion_db:
 		doi_list.append(paper["doi"])
 	papers = query_bioRxiv(published_after,published_before)
+
+	paper_dois = []
+	for paper in papers:
+		paper_dois.append(paper['doi'])
+	## if there is a duplicate in paper_dois, pick the later version #.	
+
 	non_duplicate_papers = []
 	for paper in papers:
 		if paper['doi'] not in doi_list:
@@ -490,11 +500,9 @@ def readDatabase(databaseId, notionHeaders, skip_abstracts=False):
 	return revised_db
 
 
-
-
 #query_bioRxiv("2022-11-28","2022-11-28")
-#sync_biorxiv_to_notion("2022-11-25","2022-12-03")
-readDatabase(notionDatabaseId,notionHeaders)
+sync_biorxiv_to_notion("2022-12-03","2022-12-08")
+#readDatabase(notionDatabaseId,notionHeaders)
 
 
 ## fine tune model using title, authors, author_corresponding, author_corresponding_institution, category, abstract that autocompletes "interest score: X" based on some representative scores.
