@@ -6,47 +6,24 @@ import re
 import pandas as pd 
 import tiktoken
 from openai.embeddings_utils import get_embedding
+import openai
+
+import pickle
+
+import pandas as pd
+import numpy as np
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, accuracy_score
+
+from openai.embeddings_utils import plot_multiclass_precision_recall
+
+embedding_model = "text-embedding-ada-002"
+embedding_encoding = "cl100k_base"  # this the encoding for text-embedding-ada-002
+max_tokens = 8000  # the maximum for text-embedding-ada-002 is 8191
 
 
-def create_openai_dataset():
-	# embedding model parameters
-	embedding_model = "text-embedding-ada-002"
-	embedding_encoding = "cl100k_base"  # this the encoding for text-embedding-ada-002
-	max_tokens = 8000  # the maximum for text-embedding-ada-002 is 8191
-	# load & inspect dataset
-	input_datapath = "biorxiv_from_notion_db.json"  # to save space, we provide a pre-filtered dataset
-	df = pd.read_json(input_datapath, index_col=0)
-	df = df[["doi", "title", "authors", "author_corresponding", "author_corresponding_institution","relevance", "date","category","abstract","url"]]
-	df = df.dropna()
-	df["combined"] = (
-	    "Title: " + df.title.str.strip() + 
-	    "; Authors: "+ df.authors.str.strip() + 
-	    "; Corresponding Author: "+ df.author_corresponding.str.strip() + 
-	    "; Author Institution: "+ df.author_corresponding_institution.str.strip() + 
-	    "; Category: "+ df.category.str.strip() + 
-	    "; Abstract: " + df.abstract.str.strip()
-	)
-	df.head(2)
-	top_n = 1000
-	df = df[~df.relevance.isnull()]
-	df = df.tail(top_n*2)
-	encoding = tiktoken.getencoding(embedding_encoding)
-	df["n_tokens"] = df.combined.apply(lambda x: len(encoding.encode(x)))
-	df = df[df.n_tokens <= max_tokens].tail(top_n)
-	len(df)
-
-
-##     "Relevance Score":
-##        {
-  ##          "id": "D%7DpL",
-    ##        "type": "select",
-      ##      "select":
-        ##    {
-          ##      "id": "ljLp",
-            ##    "name": "4 Very Relevant",
-          ##      "color": "blue"
-            ##}
-   ##     },
 ## secret token for fh: secret_8ibERlM89As4pGqvLzGqNFjyHQ9yXfEWo1BKdnjSshp
 ## secret token for local Richard's notion: secret_Tx1aAu8K56ruGDox2o1Zpg7wShZfSRvAtqjkpKbY6M1
 
@@ -70,6 +47,7 @@ def create_openai_dataset():
 
 today = date.today().strftime("%Y-%m-%d")
 
+openai.api_key = "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" 
 token = "secret_8ibERlM89As4pGqvLzGqNFjyHQ9yXfEWo1BKdnjSshp"
 databaseId = "49788118a4d346b78b589b70fb5af4ab" ## notion db
 interesting_categories = ["bioengineering","bioinformatics","systems biology","biophysics", "synthetic biology", "cell biology","genetics", "genomics","biochemistry", "molecular biology"]
@@ -99,7 +77,7 @@ def query_bioRxiv(published_after,published_before):
 		#print(new_collection)
 		collection = collection + new_collection
 		print(messages)
-		print(api_endpoint)
+	print(api_endpoint)
 		#print("not enough so reasking")
 		#print(messages)
 	#print(collection)
@@ -549,10 +527,72 @@ def readDatabase(skip_abstracts=False):
 	print("notion database fully downloaded.")
 	return revised_db
 
+def create_openai_dataset():
+	# embedding model parameters
+	# load & inspect dataset
+	input_datapath = "biorxiv_from_notion_db.json"  # to save space, we provide a pre-filtered dataset
+	df = pd.read_json(input_datapath)
+	df = df[["doi", "title", "authors", "author_corresponding", "author_corresponding_institution","relevance", "date","category","abstract","url"]]
+	df = df.dropna()
+	df["combined"] = (
+	    "Title: " + df.title.str.strip() + 
+	    "; Authors: "+ df.authors.str.strip() + 
+	    "; Corresponding Author: "+ df.author_corresponding.str.strip() + 
+	    "; Author Institution: "+ df.author_corresponding_institution.str.strip() + 
+	    "; Category: "+ df.category.str.strip() + 
+	    "; Abstract: " + df.abstract.str.strip()
+	)
+	df.head(2)
+	top_n = 1000
+	df = df[~df.relevance.isnull()]
+	df = df.tail(top_n*2)
+	encoding = tiktoken.get_encoding(embedding_encoding)
+	df["n_tokens"] = df.combined.apply(lambda x: len(encoding.encode(x)))
+	df = df[df.n_tokens <= max_tokens].tail(top_n)
+	len(df)
+	return df
+def add_openai_embeddings_to_dataframe(df):
+	df["embedding"] = df.combined.apply(lambda x: get_embedding(x, engine=embedding_model))
+	df.to_csv("openai_embedded_dataset.csv")
+def train_openai_classifier():
+	datafile_path = "openai_embedded_dataset.csv"
+	df = pd.read_csv(datafile_path)
+	df["embedding"] = df.embedding.apply(eval).apply(np.array)  # convert string to array
 
-#query_bioRxiv("2022-11-28","2022-11-28")
-sync_biorxiv_to_notion("2023-01-01","2022-01-03")
+	# split data into train and test
+	X_train, X_test, y_train, y_test = train_test_split(
+	    list(df.embedding.values), df.Score, test_size=0.2, random_state=42
+	)
+
+	# train random forest classifier
+	clf = RandomForestClassifier(n_estimators=100)
+	clf.fit(X_train, y_train)
+
+	# save classifier
+	file = open('important','wb')
+	pickle.dump(clf, file)
+	file.close()
+
+	return clf, X_train, X_test, y_train, y_test
+
+def predict_openai_classifier(clf, X_train, X_test, y_train, y_test):
+	preds = clf.predict(X_test)
+	probas = clf.predict_proba(X_test)
+
+	report = classification_report(y_test, preds)
+	print(report)
+	plot_multiclass_precision_recall(probas, y_test, [1, 2, 3, 4, 5], clf)
+
+#query_bioRxiv("2023-01-02","2023-01-02")
+#sync_biorxiv_to_notion("2023-01-01","2023-01-02")
 #readDatabase(True)
+
+df = create_openai_dataset()
+add_openai_embeddings_to_dataframe(df)
+clf, X_train, X_test, y_train, y_test = train_openai_classifier()
+predict_openai_classifier(clf, X_train, X_test, y_train, y_test)
+
+
 
 #with open('./notion_db.json','r',encoding='utf8') as f:
 #	notion_db = json.load(f)
