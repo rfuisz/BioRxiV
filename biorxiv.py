@@ -63,6 +63,7 @@ notionHeaders = {
 	"Notion-Version": "2022-06-28"
 }
 
+
 def query_bioRxiv(published_after,published_before):
 	## query something like "https://api.biorxiv.org/details/biorxiv/2022-11-30/2022-11-30"
 	print("querying biorxiv for between these dates: " + published_after + " and "+ published_before)
@@ -536,20 +537,33 @@ def add_papers_to_notion(paper_db_filepath='./data/papers_with_predictions_db.js
 	for paper in papers:
 		create_paper_in_notion(notionDatabaseId, notionHeaders,paper)
 
-def readDatabase(skip_abstracts=False):
+def readDatabase(skip_abstracts=False, only_scored_papers = False):
 	readUrl = f"https://api.notion.com/v1/databases/{notionDatabaseId}/query"
 	print("requesting notion db")
-	res = requests.request("POST", readUrl, headers=notionHeaders)
-	data = res.json()
-	results = data["results"]
-	while data['has_more']:
+	if only_scored_papers:
+		data = { 
+			"filter": {
+				"property": "Relevance Score",
+				"select": {
+					"is_not_empty":True
+					}
+				}
+			}
+	else:
+		data = {}
+
+
+	res = requests.request("POST", readUrl, headers=notionHeaders, data = json.dumps(data))
+	response = res.json()
+	print(response)
+	results = response["results"]
+	while response['has_more']:
 		print("getting more data...")
-		next_cursor = data['next_cursor']
-		data = {'start_cursor':next_cursor}
+		data['start_cursor'] = response['next_cursor']
 		res = requests.request("POST", readUrl, headers=notionHeaders,data = json.dumps(data))
-		data = res.json()
-		#print_pretty_json(data)
-		results = results + data["results"]
+		response = res.json()
+		print_pretty_json(response)
+		results = results + response["results"]
 
 	#print(json.dumps(res.json(),indent=2))
 
@@ -712,7 +726,7 @@ def predict_relevance(
 
 
 def train_regressor():
-	readDatabase()
+	readDatabase(only_scored_papers=True)
 	df = create_training_openai_dataset()
 	add_openai_embeddings_to_dataframe(df)
 	train_random_forest_classifier()
@@ -721,12 +735,12 @@ def train_regressor():
 
 ### The real 2 good functions
 #sync_biorxiv_to_notion("2023-01-03","2023-01-03", refresh_doi_list = True)
-#train_regressor()
+train_regressor()
 
 
 ## some helper step functions.
 #query_bioRxiv("2023-01-02","2023-01-02")
-#readDatabase(True)
+#readDatabase(skip_abstracts=True, only_scored_papers = True)
 #print(predict_relevance())
 #predict_relevance()
 #add_papers_to_notion()
