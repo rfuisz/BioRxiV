@@ -528,6 +528,7 @@ def readDatabase(skip_abstracts=False):
 	return revised_db
 
 def create_openai_dataset():
+	print("preparing dataset.")
 	# embedding model parameters
 	# load & inspect dataset
 	input_datapath = "biorxiv_from_notion_db.json"  # to save space, we provide a pre-filtered dataset
@@ -545,8 +546,10 @@ def create_openai_dataset():
 	df.head(2)
 	top_n = 1000
 	df['relevance'].replace('', np.nan, inplace=True)
+	df['relevance'].replace('5 Extremely Relevant', np.nan, inplace=True) ## this is here because there aren't enough!
 	df = df.dropna()
 	df = df.tail(top_n*2)
+	print("encoding embedding for combined text...")
 	encoding = tiktoken.get_encoding(embedding_encoding)
 	df["n_tokens"] = df.combined.apply(lambda x: len(encoding.encode(x)))
 	df = df[df.n_tokens <= max_tokens].tail(top_n)
@@ -555,9 +558,11 @@ def create_openai_dataset():
 	#print(df)
 	return df
 def add_openai_embeddings_to_dataframe(df):
+	print("adding embeddings!")
 	df["embedding"] = df.combined.apply(lambda x: get_embedding(x, engine=embedding_model))
 	df.to_csv("openai_embedded_dataset.csv")
-def train_openai_classifier():
+def train_random_forest_classifier():
+	print("training classifier")
 	datafile_path = "openai_embedded_dataset.csv"
 	df = pd.read_csv(datafile_path)
 
@@ -565,7 +570,7 @@ def train_openai_classifier():
 	#print(df)
 	# split data into train and test
 	X_train, X_test, y_train, y_test = train_test_split(
-	    list(df.embedding.values), df.relevance, test_size=0.2, random_state=69
+	    list(df.embedding.values), df.relevance, test_size=0.2, random_state=99
 	)
 
 	# train random forest classifier
@@ -573,19 +578,28 @@ def train_openai_classifier():
 	clf.fit(X_train, y_train)
 
 	# save classifier
-	file = open('important','wb')
+	file = open('classifier.pkl','wb')
 	pickle.dump(clf, file)
 	file.close()
-
-	return clf, X_train, X_test, y_train, y_test
-
-def predict_openai_classifier(clf, X_train, X_test, y_train, y_test):
 	preds = clf.predict(X_test)
 	probas = clf.predict_proba(X_test)
 
 	report = classification_report(y_test, preds)
 	print(report)
-	plot_multiclass_precision_recall(probas, y_test, [1, 2, 3, 4, 5], clf)
+	#print(y_train)
+	#print(y_test)
+	#print(preds)
+	print(probas)
+	#plot_multiclass_precision_recall(probas, y_test, [1, 2, 3, 4, 5], clf)
+
+	return clf, X_train, X_test, y_train, y_test
+
+def predict_openai_classifier(dataset):
+	f = open('classifier.pkl','rb')
+	clf = pickle.load(f)
+	f.close()
+
+	clf.predict(dataset)
 
 #query_bioRxiv("2023-01-02","2023-01-02")
 #sync_biorxiv_to_notion("2023-01-01","2023-01-02")
@@ -594,8 +608,8 @@ def predict_openai_classifier(clf, X_train, X_test, y_train, y_test):
 
 #df = create_openai_dataset()
 #add_openai_embeddings_to_dataframe(df)
-clf, X_train, X_test, y_train, y_test = train_openai_classifier()
-predict_openai_classifier(clf, X_train, X_test, y_train, y_test)
+clf, X_train, X_test, y_train, y_test = train_random_forest_classifier()
+#predict_openai_classifier(X_test)
 
 
 
