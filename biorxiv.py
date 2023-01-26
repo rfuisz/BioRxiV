@@ -3,6 +3,10 @@ import json
 from datetime import date
 import re
 
+import sys
+
+import argparse
+
 import pandas as pd 
 import tiktoken
 from openai.embeddings_utils import get_embedding
@@ -493,7 +497,7 @@ def get_abstract_from_biorxiv(doi):
 	return abstract
 
 
-def sync_biorxiv_to_notion(published_after,published_before, refresh_doi_list = True):
+def sync_biorxiv_to_notion(published_after=today,published_before=today, refresh_doi_list = True):
 	doi_list_filepath = "./data/doi_list.json"
 	doi_list = []
 	## get list of papers from notion
@@ -731,11 +735,32 @@ def train_regressor():
 	train_random_forest_classifier()
 	
 
+def main():
+	parser = argparse.ArgumentParser(description = "refresh_doi_list=False if you don't want to avoid duplicate papers.")
+	parser.add_argument('--train', '-t', action = 'store_true', help = 'train flag. will download the current notion db and replace the classifier stored in this repo with a new regression classifier.')
+	parser.add_argument('--upload', '-u', action = 'store_true', help = 'upload flag. will download the current notion db to check for duplicates, then download biorxiv through the specified date range. then it will predict relevance using openai embedding / classifier, and upload the nonduplicate papers to notion with those relevance predictions included.')
+	parser.add_argument('dates', nargs = 2, type=str)
+	parser.add_argument('--no_doi_refresh', '-d', action = 'store_true', help = 'skips the notion download step to check for duplicates. faster but you will get duplicates using this flag unless your date range is not already included in the db')
+	
+	args = parser.parse_args()
+	if args.train:
+		train_regressor()
+	elif args.upload:
+		start_date = args.dates[0]
+		end_date = args.dates[1]
+		if args.no_doi_refresh:
+			refresh_flag = False
+		else:
+			refresh_flag = True
+		sync_biorxiv_to_notion(start_date, end_date, refresh_doi_list = refresh_flag)
+	else:
+		print("you input something wrong. try the -h flag")
 
 ### The real 2 good functions
-sync_biorxiv_to_notion("2023-01-05","2023-01-05", refresh_doi_list = True)
+if __name__ == "__main__":
+	main()
 #train_regressor()
-
+#sync_biorxiv_to_notion("2023-01-05","2023-01-05", refresh_doi_list = True)
 
 ## some helper step functions.
 #query_bioRxiv("2023-01-02","2023-01-02")
