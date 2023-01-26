@@ -25,26 +25,15 @@ from sklearn import metrics
 
 from openai.embeddings_utils import plot_multiclass_precision_recall
 
-embedding_model = "text-embedding-ada-002"
-embedding_encoding = "cl100k_base"  # this the encoding for text-embedding-ada-002
-max_tokens = 8000  # the maximum for text-embedding-ada-002 is 8191
 
-
-
-## when training the classifier, have it pull from a database that is only filtered to have scored papers
-## store the DOI locally (use a flag to determine when you want to udpate the local DOI list.)
-
-
-
-
-
-
-
+openai.api_key = "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" 
+token = "secret_8ibERlM89As4pGqvLzGqNFjyHQ9yXfEWo1BKdnjSshp"
+notionDatabaseId = "49788118a4d346b78b589b70fb5af4ab" ## notion db
 ## secret token for fh: secret_8ibERlM89As4pGqvLzGqNFjyHQ9yXfEWo1BKdnjSshp
 ## secret token for local Richard's notion: secret_Tx1aAu8K56ruGDox2o1Zpg7wShZfSRvAtqjkpKbY6M1
-
 ## Future house database id: 49788118a4d346b78b589b70fb5af4ab
 ## Local database id: 0b3a840375e04b9bbe2c2ec98729f132
+
 
 ## currently checks to see if the doi is already in the notion
 ## but doesn't check for duplicates within the payload.
@@ -56,10 +45,14 @@ max_tokens = 8000  # the maximum for text-embedding-ada-002 is 8191
 
 today = date.today().strftime("%Y-%m-%d")
 
-openai.api_key = "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" 
-token = "secret_8ibERlM89As4pGqvLzGqNFjyHQ9yXfEWo1BKdnjSshp"
-notionDatabaseId = "49788118a4d346b78b589b70fb5af4ab" ## notion db
 interesting_categories = ["bioengineering","bioinformatics","systems biology","biophysics", "synthetic biology", "cell biology","genetics", "genomics","biochemistry", "molecular biology"]
+
+
+embedding_model = "text-embedding-ada-002"
+embedding_encoding = "cl100k_base"  # this the encoding for text-embedding-ada-002
+max_tokens = 8000  # the maximum for text-embedding-ada-002 is 8191
+
+
 
 notionHeaders = {
 	"Authorization": "Bearer " + token,
@@ -564,7 +557,7 @@ def add_openai_embeddings_to_dataframe(df):
 	df["embedding"] = df.combined.apply(lambda x: get_embedding(x, engine=embedding_model))
 	df.to_csv("data/regressor_openai_embedded_dataset.csv")
 	return df
-def train_random_forest_classifier(random_state=40):
+def train_random_forest_classifier(random_state=99):
 	print("training classifier")
 	datafile_path = "data/regressor_openai_embedded_dataset.csv"
 	df = pd.read_csv(datafile_path)
