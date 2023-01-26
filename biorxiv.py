@@ -492,6 +492,7 @@ def get_abstract_from_biorxiv(doi):
 	abstract = r.json()["collection"][-1]["abstract"] ## grabs the highest version #, if multiple docs exist for same doi.
 	return abstract
 
+
 def sync_biorxiv_to_notion(published_after,published_before, refresh_doi_list = True):
 	doi_list_filepath = "./data/doi_list.json"
 	doi_list = []
@@ -555,14 +556,14 @@ def readDatabase(skip_abstracts=False, only_scored_papers = False):
 
 	res = requests.request("POST", readUrl, headers=notionHeaders, data = json.dumps(data))
 	response = res.json()
-	print(response)
+	#print(response)
 	results = response["results"]
 	while response['has_more']:
 		print("getting more data...")
 		data['start_cursor'] = response['next_cursor']
 		res = requests.request("POST", readUrl, headers=notionHeaders,data = json.dumps(data))
 		response = res.json()
-		print_pretty_json(response)
+		#print_pretty_json(response)
 		results = results + response["results"]
 
 	#print(json.dumps(res.json(),indent=2))
@@ -649,7 +650,7 @@ def add_openai_embeddings_to_dataframe(df):
 	df["embedding"] = df.combined.apply(lambda x: get_embedding(x, engine=embedding_model))
 	df.to_csv("data/regressor_openai_embedded_dataset.csv")
 	return df
-def train_random_forest_classifier():
+def train_random_forest_classifier(random_state=40):
 	print("training classifier")
 	datafile_path = "data/regressor_openai_embedded_dataset.csv"
 	df = pd.read_csv(datafile_path)
@@ -658,11 +659,11 @@ def train_random_forest_classifier():
 	#print(df)
 	# split data into train and test
 	X_train, X_test, y_train, y_test = train_test_split(
-	    list(df.embedding.values), df.relevance, test_size=0.2, random_state=42
+	    list(df.embedding.values), df.relevance, test_size=0.2, random_state=random_state
 	)
 
 	# train random forest classifier
-	clf = RandomForestRegressor(n_estimators=100, random_state = 42)
+	clf = RandomForestRegressor(n_estimators=100, random_state = random_state)
 	clf.fit(X_train, y_train)
 
 	# save classifier
@@ -694,9 +695,7 @@ def train_random_forest_classifier():
 
 	return clf, X_train, X_test, y_train, y_test
 
-def predict_relevance(
-	papers_without_predictions_db_filepath = './data/relevance_db.json',
-	papers_with_predictions_db_filepath = './data/papers_with_predictions_db.json'): ## call this while adding new papers into notion page.
+def predict_relevance(papers_without_predictions_db_filepath = './data/relevance_db.json',papers_with_predictions_db_filepath = './data/papers_with_predictions_db.json'): ## call this while adding new papers into notion page.
 	with open(papers_without_predictions_db_filepath, 'r', encoding='utf8') as f:
 		papers = json.load(f)
 
@@ -734,13 +733,14 @@ def train_regressor():
 
 
 ### The real 2 good functions
-#sync_biorxiv_to_notion("2023-01-03","2023-01-03", refresh_doi_list = True)
-train_regressor()
+sync_biorxiv_to_notion("2023-01-05","2023-01-05", refresh_doi_list = True)
+#train_regressor()
 
 
 ## some helper step functions.
 #query_bioRxiv("2023-01-02","2023-01-02")
 #readDatabase(skip_abstracts=True, only_scored_papers = True)
+#train_random_forest_classifier(99)
 #print(predict_relevance())
 #predict_relevance()
 #add_papers_to_notion()
