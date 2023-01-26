@@ -544,12 +544,15 @@ def create_openai_dataset():
 	)
 	df.head(2)
 	top_n = 1000
-	df = df[~df.relevance.isnull()]
+	df['relevance'].replace('', np.nan, inplace=True)
+	df = df.dropna()
 	df = df.tail(top_n*2)
 	encoding = tiktoken.get_encoding(embedding_encoding)
 	df["n_tokens"] = df.combined.apply(lambda x: len(encoding.encode(x)))
 	df = df[df.n_tokens <= max_tokens].tail(top_n)
 	len(df)
+	df.to_csv("openai_embedded_dataset_no_embeddings.csv")
+	#print(df)
 	return df
 def add_openai_embeddings_to_dataframe(df):
 	df["embedding"] = df.combined.apply(lambda x: get_embedding(x, engine=embedding_model))
@@ -557,11 +560,12 @@ def add_openai_embeddings_to_dataframe(df):
 def train_openai_classifier():
 	datafile_path = "openai_embedded_dataset.csv"
 	df = pd.read_csv(datafile_path)
-	df["embedding"] = df.embedding.apply(eval).apply(np.array)  # convert string to array
 
+	df["embedding"] = df.embedding.apply(eval).apply(np.array)  # convert string to array
+	#print(df)
 	# split data into train and test
 	X_train, X_test, y_train, y_test = train_test_split(
-	    list(df.embedding.values), df.Score, test_size=0.2, random_state=42
+	    list(df.embedding.values), df.relevance, test_size=0.2, random_state=69
 	)
 
 	# train random forest classifier
@@ -587,8 +591,9 @@ def predict_openai_classifier(clf, X_train, X_test, y_train, y_test):
 #sync_biorxiv_to_notion("2023-01-01","2023-01-02")
 #readDatabase(True)
 
-df = create_openai_dataset()
-add_openai_embeddings_to_dataframe(df)
+
+#df = create_openai_dataset()
+#add_openai_embeddings_to_dataframe(df)
 clf, X_train, X_test, y_train, y_test = train_openai_classifier()
 predict_openai_classifier(clf, X_train, X_test, y_train, y_test)
 
