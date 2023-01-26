@@ -573,7 +573,7 @@ def train_random_forest_classifier(random_state=40):
 	#print(df)
 	# split data into train and test
 	X_train, X_test, y_train, y_test = train_test_split(
-	    list(df.embedding.values), df.relevance, test_size=0.2, random_state=random_state
+	    list(df.embedding.values), df.relevance, test_size=0.1, random_state=random_state
 	)
 
 	# train random forest classifier
