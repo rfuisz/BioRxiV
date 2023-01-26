@@ -3,6 +3,50 @@ import json
 from datetime import date
 import re
 
+import pandas as pd 
+import tiktoken
+from openai.embeddings_utils import get_embedding
+
+
+def create_openai_dataset():
+	# embedding model parameters
+	embedding_model = "text-embedding-ada-002"
+	embedding_encoding = "cl100k_base"  # this the encoding for text-embedding-ada-002
+	max_tokens = 8000  # the maximum for text-embedding-ada-002 is 8191
+	# load & inspect dataset
+	input_datapath = "biorxiv_from_notion_db.json"  # to save space, we provide a pre-filtered dataset
+	df = pd.read_json(input_datapath, index_col=0)
+	df = df[["doi", "title", "authors", "author_corresponding", "author_corresponding_institution","relevance", "date","category","abstract","url"]]
+	df = df.dropna()
+	df["combined"] = (
+	    "Title: " + df.title.str.strip() + 
+	    "; Authors: "+ df.authors.str.strip() + 
+	    "; Corresponding Author: "+ df.author_corresponding.str.strip() + 
+	    "; Author Institution: "+ df.author_corresponding_institution.str.strip() + 
+	    "; Category: "+ df.category.str.strip() + 
+	    "; Abstract: " + df.abstract.str.strip()
+	)
+	df.head(2)
+	top_n = 1000
+	df = df[~df.relevance.isnull()]
+	df = df.tail(top_n*2)
+	encoding = tiktoken.getencoding(embedding_encoding)
+	df["n_tokens"] = df.combined.apply(lambda x: len(encoding.encode(x)))
+	df = df[df.n_tokens <= max_tokens].tail(top_n)
+	len(df)
+
+
+##     "Relevance Score":
+##        {
+  ##          "id": "D%7DpL",
+    ##        "type": "select",
+      ##      "select":
+        ##    {
+          ##      "id": "ljLp",
+            ##    "name": "4 Very Relevant",
+          ##      "color": "blue"
+            ##}
+   ##     },
 ## secret token for fh: secret_8ibERlM89As4pGqvLzGqNFjyHQ9yXfEWo1BKdnjSshp
 ## secret token for local Richard's notion: secret_Tx1aAu8K56ruGDox2o1Zpg7wShZfSRvAtqjkpKbY6M1
 
@@ -27,9 +71,8 @@ import re
 today = date.today().strftime("%Y-%m-%d")
 
 token = "secret_8ibERlM89As4pGqvLzGqNFjyHQ9yXfEWo1BKdnjSshp"
-notionDatabaseId = "49788118a4d346b78b589b70fb5af4ab"
+databaseId = "49788118a4d346b78b589b70fb5af4ab" ## notion db
 interesting_categories = ["bioengineering","bioinformatics","systems biology","biophysics", "synthetic biology", "cell biology","genetics", "genomics","biochemistry", "molecular biology"]
-
 
 notionHeaders = {
 	"Authorization": "Bearer " + token,
@@ -41,12 +84,13 @@ def query_bioRxiv(published_after,published_before):
 	## query something like "https://api.biorxiv.org/details/biorxiv/2022-11-30/2022-11-30"
 	print("querying biorxiv for between these dates: " + published_after + " and "+ published_before)
 	cursor = 0
-	r = requests.get("https://api.biorxiv.org/details/biorxiv/"+published_after+"/"+published_before+"/"+str(cursor))
+	api_endpoint ="https://api.biorxiv.org/details/biorxiv/"+published_after+"/"+published_before+"/"+str(cursor)
+	r = requests.get(api_endpoint)
 	messages = r.json()['messages']
 	collection = r.json()['collection']
 	#print(collection)
-	#print(messages)
-
+	print(messages)
+	print(api_endpoint)
 	while (messages[0]['total'] > 100+cursor):
 		cursor += 100
 		r = requests.get("https://api.biorxiv.org/details/biorxiv/"+published_after+"/"+published_before+"/"+str(cursor))
@@ -54,6 +98,8 @@ def query_bioRxiv(published_after,published_before):
 		new_collection = r.json()['collection']
 		#print(new_collection)
 		collection = collection + new_collection
+		print(messages)
+		print(api_endpoint)
 		#print("not enough so reasking")
 		#print(messages)
 	#print(collection)
@@ -430,8 +476,12 @@ def translate_notion_to_bioRxiv_format(notionJson, skip_abstracts=False):
 		else:
 			biorxiv_entry["date"] = ""
 		if entry["properties"]["Relevance Score"].get("select") is not None:
-			biorxiv_entry["relevance"] = entry["properties"]["Relevance Score"].get("select").get("name")
+			print("relevance not none")
+			notion_relevance = entry["properties"]["Relevance Score"].get("select").get("name")
+			print(notion_relevance)
+			biorxiv_entry["relevance"] = notion_relevance
 		else:
+			print("relevance was none")
 			biorxiv_entry["relevance"] = ""
 
 		#biorxiv_entry["abstract"] = get_abstract(entry["id"],notionHeaders)
@@ -451,7 +501,7 @@ def get_abstract_from_biorxiv(doi):
 	return abstract
 
 def sync_biorxiv_to_notion(published_after,published_before):
-	converted_notion_db = readDatabase(notionDatabaseId,notionHeaders, skip_abstracts = True)
+	converted_notion_db = readDatabase(skip_abstracts = True)
 	doi_list = []
 	for paper in converted_notion_db:
 		doi_list.append(paper["doi"])
@@ -470,7 +520,7 @@ def sync_biorxiv_to_notion(published_after,published_before):
 			print("This DOI is already in notion!" + paper['doi'])
 	for paper in non_duplicate_papers:
 		create_paper_in_notion(notionDatabaseId, notionHeaders,paper)
-def readDatabase(databaseId, notionHeaders, skip_abstracts=False):
+def readDatabase(skip_abstracts=False):
 	readUrl = f"https://api.notion.com/v1/databases/{databaseId}/query"
 	print("requesting notion db")
 	res = requests.request("POST", readUrl, headers=notionHeaders)
@@ -501,10 +551,12 @@ def readDatabase(databaseId, notionHeaders, skip_abstracts=False):
 
 
 #query_bioRxiv("2022-11-28","2022-11-28")
-sync_biorxiv_to_notion("2022-12-03","2022-12-08")
-#readDatabase(notionDatabaseId,notionHeaders)
+sync_biorxiv_to_notion("2023-01-01","2022-01-03")
+#readDatabase(True)
 
-
+#with open('./notion_db.json','r',encoding='utf8') as f:
+#	notion_db = json.load(f)
+#translate_notion_to_bioRxiv_format(notion_db,True)
 ## fine tune model using title, authors, author_corresponding, author_corresponding_institution, category, abstract that autocompletes "interest score: X" based on some representative scores.
 
 ## or do an embedding of the abstracts, then train sklearn random forest classifier (see gpt3)
