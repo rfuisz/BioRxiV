@@ -507,7 +507,9 @@ def sync_biorxiv_to_notion(published_after,published_before):
 		else:
 			print("This DOI is already in notion!" + paper['doi'])
 
-
+	relevance_db_filepath = './data/relevance_db.json'
+	with open(relevance_db_filepath, 'w', encoding='utf8') as f: ## saves in standard biorxiv style json
+		json.dump(non_duplicate_papers, f, ensure_ascii=False)	
 	non_duplicate_papers = predict_relevance(non_duplicate_papers) ## add predicted relevance.
 
 	for paper in non_duplicate_papers:
@@ -541,7 +543,7 @@ def readDatabase(skip_abstracts=False):
 	print("notion database fully downloaded.")
 	return revised_db
 
-def create_openai_dataset(json_dataset = "data/biorxiv_from_notion_db.json"):
+def create_training_openai_dataset(json_dataset = "data/biorxiv_from_notion_db.json"):
 	print("preparing dataset.")
 	# embedding model parameters
 	# load & inspect dataset
@@ -556,7 +558,7 @@ def create_openai_dataset(json_dataset = "data/biorxiv_from_notion_db.json"):
 	    "; Category: "+ df.category.str.strip() + 
 	    "; Abstract: " + df.abstract.str.strip()
 	)
-	df.head(2)
+	#df.head(2)
 	top_n = 1000
 	df['relevance'].replace('', np.nan, inplace=True)
 	df = df.dropna()
@@ -567,6 +569,35 @@ def create_openai_dataset(json_dataset = "data/biorxiv_from_notion_db.json"):
 	df['relevance'].replace('2 Probably Irrelevant', 2, inplace=True) ## this is here because there aren't enough!
 	df['relevance'].replace('1 Certainly Irrelevant', 1, inplace=True) ## this is here because there aren't enough!
 	
+
+	df = df.tail(top_n*2)
+	print("encoding embedding for combined text...")
+	encoding = tiktoken.get_encoding(embedding_encoding)
+	df["n_tokens"] = df.combined.apply(lambda x: len(encoding.encode(x)))
+	df = df[df.n_tokens <= max_tokens].tail(top_n)
+	len(df)
+	df.to_csv("data/regressor_openai_embedded_dataset_no_embeddings.csv") # this isn't used, just an intermediate saved state.
+	#print(df)
+	return df
+
+def create_regression_openai_dataset(json_dataset = "data/biorxiv_db.json"):
+	print("preparing dataset.")
+	# embedding model parameters
+	# load & inspect dataset
+	df = pd.read_json(json_dataset)
+	df = df[["doi", "title", "authors", "author_corresponding", "author_corresponding_institution", "date","category","abstract","url"]]
+	df = df.dropna()
+	df["combined"] = (
+	    "Title: " + df.title.str.strip() + 
+	    "; Authors: "+ df.authors.str.strip() + 
+	    "; Corresponding Author: "+ df.author_corresponding.str.strip() + 
+	    "; Author Institution: "+ df.author_corresponding_institution.str.strip() + 
+	    "; Category: "+ df.category.str.strip() + 
+	    "; Abstract: " + df.abstract.str.strip()
+	)
+
+	top_n = 1000
+	df = df.dropna()
 
 	df = df.tail(top_n*2)
 	print("encoding embedding for combined text...")
@@ -627,10 +658,15 @@ def train_random_forest_classifier():
 
 	return clf, X_train, X_test, y_train, y_test
 
-def predict_relevance(json_dataset): ## call this while adding new papers into notion page.
-	df = create_openai_dataset(json_dataset)
+def predict_relevance(relevance_db_filepath = './data/relevance_db.json'): ## call this while adding new papers into notion page.
+	with open(relevance_db_filepath, 'r', encoding='utf8') as f:
+		json_dataset = json.load(f)
+
+
+	df = create_regression_openai_dataset(relevance_db_filepath)
 	df = add_openai_embeddings_to_dataframe(df)
-	df["embedding"] = df.embedding.apply(eval).apply(np.array)  # convert string to array
+	#print(df)
+	#df["embedding"] = df.embedding.apply(eval).apply(np.array)  # convert string to array
 	embeddings = list(df.embedding.values)
 
 	f = open('classifier_regressor.pkl','rb')
@@ -642,15 +678,16 @@ def predict_relevance(json_dataset): ## call this while adding new papers into n
 	## match those predictions back up to the original DOIs / entries
 
 	## add those predictions to  the notion db. 
-	print(predictions)
-	for i in range(json_dataset):
+	#print(predictions)
+
+	for i in range(len(json_dataset)):
 		json_dataset[i]['predicted_relevance'] = predictions[i]
 	return json_dataset
 
 
 def train_regressor():
 	readDatabase()
-	df = create_openai_dataset()
+	df = create_training_openai_dataset()
 	add_openai_embeddings_to_dataframe(df)
 	train_random_forest_classifier()
 	
@@ -660,7 +697,7 @@ def train_regressor():
 sync_biorxiv_to_notion("2023-01-03","2023-01-03")
 #train_regressor()
 #readDatabase(True)
-
+#print(predict_relevance())
 
 #with open('./notion_db.json','r',encoding='utf8') as f:
 #	notion_db = json.load(f)
