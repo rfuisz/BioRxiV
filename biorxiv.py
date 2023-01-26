@@ -13,9 +13,11 @@ import pickle
 import pandas as pd
 import numpy as np
 
-from sklearn.ensemble import RandomForestClassifier
+#from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, accuracy_score
+#from sklearn.metrics import classification_report, accuracy_score
+from sklearn import metrics
 
 from openai.embeddings_utils import plot_multiclass_precision_recall
 
@@ -109,7 +111,7 @@ def query_bioRxiv(published_after,published_before):
 		paper.pop("jatsxml")
 
 
-	with open('./biorxiv_db.json', 'w', encoding='utf8') as f: ## saves in notion format, doesn't include abstracts.
+	with open('./data/biorxiv_db.json', 'w', encoding='utf8') as f: ## saves in notion format, doesn't include abstracts.
 		json.dump(filtered_collection, f, ensure_ascii=False)
 	#print(json.dumps(filtered_collection,indent=4))
 	#print(messages)
@@ -522,16 +524,16 @@ def readDatabase(skip_abstracts=False):
 	if skip_abstracts:
 		print("not collecting abstracts, not updating the local db json.")
 	else:
-		with open('./biorxiv_from_notion_db.json', 'w', encoding='utf8') as f: ## saves in standard biorxiv style json
+		with open('./data/biorxiv_from_notion_db.json', 'w', encoding='utf8') as f: ## saves in standard biorxiv style json
 			json.dump(revised_db, f, ensure_ascii=False)	
 	print("notion database fully downloaded.")
 	return revised_db
 
-def create_openai_dataset():
+def create_openai_dataset(filename = "data/biorxiv_from_notion_db.json"):
 	print("preparing dataset.")
 	# embedding model parameters
 	# load & inspect dataset
-	input_datapath = "biorxiv_from_notion_db.json"  # to save space, we provide a pre-filtered dataset
+	input_datapath = filename  # to save space, we provide a pre-filtered dataset
 	df = pd.read_json(input_datapath)
 	df = df[["doi", "title", "authors", "author_corresponding", "author_corresponding_institution","relevance", "date","category","abstract","url"]]
 	df = df.dropna()
@@ -546,70 +548,99 @@ def create_openai_dataset():
 	df.head(2)
 	top_n = 1000
 	df['relevance'].replace('', np.nan, inplace=True)
-	df['relevance'].replace('5 Extremely Relevant', np.nan, inplace=True) ## this is here because there aren't enough!
 	df = df.dropna()
+
+	df['relevance'].replace('5 Extremely Relevant', 5, inplace=True) ## this is here because there aren't enough!
+	df['relevance'].replace('4 Very Relevant', 4, inplace=True) ## this is here because there aren't enough!
+	df['relevance'].replace('3 Possibly Relevant', 3, inplace=True) ## this is here because there aren't enough!
+	df['relevance'].replace('2 Probably Irrelevant', 2, inplace=True) ## this is here because there aren't enough!
+	df['relevance'].replace('1 Certainly Irrelevant', 1, inplace=True) ## this is here because there aren't enough!
+	
+
 	df = df.tail(top_n*2)
 	print("encoding embedding for combined text...")
 	encoding = tiktoken.get_encoding(embedding_encoding)
 	df["n_tokens"] = df.combined.apply(lambda x: len(encoding.encode(x)))
 	df = df[df.n_tokens <= max_tokens].tail(top_n)
 	len(df)
-	df.to_csv("openai_embedded_dataset_no_embeddings.csv")
+	df.to_csv("data/regressor_openai_embedded_dataset_no_embeddings.csv") # this isn't used, just an intermediate saved state.
 	#print(df)
 	return df
 def add_openai_embeddings_to_dataframe(df):
 	print("adding embeddings!")
 	df["embedding"] = df.combined.apply(lambda x: get_embedding(x, engine=embedding_model))
-	df.to_csv("openai_embedded_dataset.csv")
+	df.to_csv("data/regressor_openai_embedded_dataset.csv")
+	return df
 def train_random_forest_classifier():
 	print("training classifier")
-	datafile_path = "openai_embedded_dataset.csv"
+	datafile_path = "data/regressor_openai_embedded_dataset.csv"
 	df = pd.read_csv(datafile_path)
 
 	df["embedding"] = df.embedding.apply(eval).apply(np.array)  # convert string to array
 	#print(df)
 	# split data into train and test
 	X_train, X_test, y_train, y_test = train_test_split(
-	    list(df.embedding.values), df.relevance, test_size=0.2, random_state=99
+	    list(df.embedding.values), df.relevance, test_size=0.2, random_state=42
 	)
 
 	# train random forest classifier
-	clf = RandomForestClassifier(n_estimators=100)
+	clf = RandomForestRegressor(n_estimators=100, random_state = 42)
 	clf.fit(X_train, y_train)
 
 	# save classifier
-	file = open('classifier.pkl','wb')
+	file = open('classifier_regressor.pkl','wb')
 	pickle.dump(clf, file)
 	file.close()
 	preds = clf.predict(X_test)
-	probas = clf.predict_proba(X_test)
+	#probas = clf.predict_proba(X_test)
 
-	report = classification_report(y_test, preds)
-	print(report)
+	#report = classification_report(y_test, preds)
+	#print(report)
 	#print(y_train)
 	#print(y_test)
-	#print(preds)
-	print(probas)
+	print(preds)
+	print(y_test.tolist())
+	#print(probas)
+
+	pred = preds 
+	gt = y_test.tolist()
+
+	print('Mean Absolute Error (MAE):', metrics.mean_absolute_error(gt, pred))
+	print('Mean Squared Error (MSE):', metrics.mean_squared_error(gt, pred))
+	print('Root Mean Squared Error (RMSE):', np.sqrt(metrics.mean_squared_error(gt, pred)))
+	mape = np.mean(np.abs((gt - pred) / np.abs(gt)))
+	print('Mean Absolute Percentage Error (MAPE):', round(mape * 100, 2))
+	print('Accuracy:', round(100*(1 - mape), 2))
+
 	#plot_multiclass_precision_recall(probas, y_test, [1, 2, 3, 4, 5], clf)
 
 	return clf, X_train, X_test, y_train, y_test
 
-def predict_openai_classifier(dataset):
-	f = open('classifier.pkl','rb')
+def predict_relevance(): ## call this while adding new papers into notion page.
+	df = create_openai_dataset("data/biorxiv_db.json")
+	df = add_openai_embeddings_to_dataframe(df)
+	df["embedding"] = df.embedding.apply(eval).apply(np.array)  # convert string to array
+	embeddings = list(df.embedding.values)
+
+	f = open('classifier_regressor.pkl','rb')
 	clf = pickle.load(f)
 	f.close()
 
-	clf.predict(dataset)
+	predictions = clf.predict(embeddings)
+
+	## match those predictions back up to the original DOIs / entries
+
+	## add those predictions to  the notion db. 
 
 #query_bioRxiv("2023-01-02","2023-01-02")
 #sync_biorxiv_to_notion("2023-01-01","2023-01-02")
 #readDatabase(True)
 
-
-#df = create_openai_dataset()
-#add_openai_embeddings_to_dataframe(df)
-clf, X_train, X_test, y_train, y_test = train_random_forest_classifier()
-#predict_openai_classifier(X_test)
+def train_regressor():
+	df = create_openai_dataset()
+	add_openai_embeddings_to_dataframe(df)
+	train_random_forest_classifier()
+	
 
 
 
