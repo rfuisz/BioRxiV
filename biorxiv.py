@@ -642,7 +642,7 @@ def main():
 	parser = argparse.ArgumentParser(description = "refresh_doi_list=False if you don't want to avoid duplicate papers.")
 	parser.add_argument('--train', '-t', action = 'store_true', help = 'train flag. will download the current notion db and replace the classifier stored in this repo with a new regression classifier.')
 	parser.add_argument('--upload', '-u', action = 'store_true', help = 'upload flag. will download the current notion db to check for duplicates, then download biorxiv through the specified date range. then it will predict relevance using openai embedding / classifier, and upload the nonduplicate papers to notion with those relevance predictions included.')
-	parser.add_argument('dates', nargs = '?', type=str)
+	parser.add_argument('dates', nargs = '*', type=str)
 	parser.add_argument('--no_doi_refresh', '-d', action = 'store_true', help = 'skips the notion download step to check for duplicates. faster but you will get duplicates using this flag unless your date range is not already included in the db')
 	
 	args = parser.parse_args()
