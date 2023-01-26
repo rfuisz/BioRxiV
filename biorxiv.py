@@ -222,13 +222,7 @@ def create_paper_in_notion(notionDatabaseId, notionHeaders,paper):
 				]
 			},
 			"Predicted Relevance": {
-				"rich_text": [
-					{
-						"text": {
-							"content": str(paper["predicted_relevance"])
-						}
-					}
-				]
+				"number": paper["predicted_relevance"]
 			},
 			"Abstract": {
 				"rich_text": [
@@ -275,12 +269,14 @@ def create_paper_in_notion(notionDatabaseId, notionHeaders,paper):
 
 	newPageData["children"] = abstract_blocks
 	data = json.dumps(newPageData)
-	#print(str(uploadData))
+
 	print("Adding this paper to Notion: "+ paper["title"])
 	res = requests.request("POST", createUrl, headers=notionHeaders, data=data)
 	print(res.status_code)
 	#print(json.dumps(res.json(),indent=2))
 	if res.status_code == 400:
+		print_pretty_json(newPageData)
+		print(json.dumps(res.json(),indent=2))
 		print("error!! stopping it now.")
 		quit()
 def update_page(pageId, notionHeaders):
@@ -687,14 +683,14 @@ if __name__ == "__main__":
 #with open('./notion_db.json','r',encoding='utf8') as f:
 #	notion_db = json.load(f)
 #translate_notion_to_bioRxiv_format(notion_db,True)
+
+
 ## fine tune model using title, authors, author_corresponding, author_corresponding_institution, category, abstract that autocompletes "interest score: X" based on some representative scores.
 
 ## or do an embedding of the abstracts, then train sklearn random forest classifier (see gpt3)
 
 ## for each request that passes the above criteria, prompt gpt3 to see if it would be interesting. 
 ## include server, institution name, abstract, category
-
-
 
 
 
