@@ -26,6 +26,16 @@ embedding_encoding = "cl100k_base"  # this the encoding for text-embedding-ada-0
 max_tokens = 8000  # the maximum for text-embedding-ada-002 is 8191
 
 
+
+## when training the classifier, have it pull from a database that is only filtered to have scored papers
+## store the DOI locally (use a flag to determine when you want to udpate the local DOI list.)
+
+
+
+
+
+
+
 ## secret token for fh: secret_8ibERlM89As4pGqvLzGqNFjyHQ9yXfEWo1BKdnjSshp
 ## secret token for local Richard's notion: secret_Tx1aAu8K56ruGDox2o1Zpg7wShZfSRvAtqjkpKbY6M1
 
@@ -36,13 +46,6 @@ max_tokens = 8000  # the maximum for text-embedding-ada-002 is 8191
 ## but doesn't check for duplicates within the payload.
 
 
-## add dates to uploads so that it's harder to re-upload duplicates by mistake
-## don't upload duplicates: 
-#### query the notion db, translate into the simple json
-#### using json, make a list of DOIs
-#### for loop through papers list, remove any that have DOIs in the list
-#### upload those papers.
-
 
 ### get abstracts, titles, authors, affiliation, date, and optionally: tags, journals, using id:
 ### https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=17284678
@@ -51,7 +54,7 @@ today = date.today().strftime("%Y-%m-%d")
 
 openai.api_key = "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" 
 token = "secret_8ibERlM89As4pGqvLzGqNFjyHQ9yXfEWo1BKdnjSshp"
-databaseId = "49788118a4d346b78b589b70fb5af4ab" ## notion db
+notionDatabaseId = "49788118a4d346b78b589b70fb5af4ab" ## notion db
 interesting_categories = ["bioengineering","bioinformatics","systems biology","biophysics", "synthetic biology", "cell biology","genetics", "genomics","biochemistry", "molecular biology"]
 
 notionHeaders = {
@@ -132,12 +135,12 @@ def get_abstract_from_notion(pageId,notionHeaders): ## extremely slow
 		#print(block_text)
 		#print("next block:")
 	return "\n".join(text_blocks)
-def createPage(databaseId, notionHeaders):
+def createPage(notionDatabaseId, notionHeaders):
 	print("creating page")
 	createUrl = 'https://api.notion.com/v1/pages'
 
 	newPageData = {
-		"parent": { "database_id": databaseId},
+		"parent": { "database_id": notionDatabaseId},
 		"properties": {
 			"Title": {
 				"title": [
@@ -234,10 +237,10 @@ def updatePage(pageId, notionHeaders):
 			}        
 		}
 	}
-def create_paper_in_notion(databaseId, notionHeaders,paper):
+def create_paper_in_notion(notionDatabaseId, notionHeaders,paper):
 	createUrl = 'https://api.notion.com/v1/pages'
 	newPageData = {
-		"parent": { "database_id": databaseId},
+		"parent": { "database_id": notionDatabaseId},
 		"properties": {
 			"Title": {
 				"title": [
@@ -303,7 +306,7 @@ def create_paper_in_notion(databaseId, notionHeaders,paper):
 				"rich_text": [
 					{
 						"text": {
-							"content": paper["predicted_relevance"]
+							"content": str(paper["predicted_relevance"])
 						}
 					}
 				]
@@ -353,7 +356,7 @@ def create_paper_in_notion(databaseId, notionHeaders,paper):
 
 	newPageData["children"] = abstract_blocks
 	data = json.dumps(newPageData)
-	# print(str(uploadData))
+	#print(str(uploadData))
 	print("Adding this paper to Notion: "+ paper["title"])
 	res = requests.request("POST", createUrl, headers=notionHeaders, data=data)
 	print(res.status_code)
@@ -465,12 +468,11 @@ def translate_notion_to_bioRxiv_format(notionJson, skip_abstracts=False):
 		else:
 			biorxiv_entry["date"] = ""
 		if entry["properties"]["Relevance Score"].get("select") is not None:
-			print("relevance not none")
 			notion_relevance = entry["properties"]["Relevance Score"].get("select").get("name")
-			print(notion_relevance)
+			#print(notion_relevance)
 			biorxiv_entry["relevance"] = notion_relevance
 		else:
-			print("relevance was none")
+			#print("relevance was none")
 			biorxiv_entry["relevance"] = ""
 
 		#biorxiv_entry["abstract"] = get_abstract(entry["id"],notionHeaders)
@@ -489,33 +491,53 @@ def get_abstract_from_biorxiv(doi):
 	abstract = r.json()["collection"][-1]["abstract"] ## grabs the highest version #, if multiple docs exist for same doi.
 	return abstract
 
-def sync_biorxiv_to_notion(published_after,published_before):
-	converted_notion_db = readDatabase(skip_abstracts = True)
+def sync_biorxiv_to_notion(published_after,published_before, refresh_doi_list = True):
+	doi_list_filepath = "./data/doi_list.json"
 	doi_list = []
-	for paper in converted_notion_db:
-		doi_list.append(paper["doi"])
-	papers = query_bioRxiv(published_after,published_before)
+	## get list of papers from notion
+	if refresh_doi_list:
+		converted_notion_db = readDatabase(skip_abstracts = True)
 
+		for paper in converted_notion_db:
+			doi_list.append(paper["doi"])
+		with open(doi_list_filepath, 'w', encoding='utf8') as f: ## saves in standard biorxiv style json
+			json.dump(doi_list, f, ensure_ascii=False)	
+	else: 
+		with open(doi_list_filepath, 'r', encoding = 'utf8') as f:
+			doi_list = json.load(f)
+
+	## get papers from biorxiv	
+	papers = query_bioRxiv(published_after,published_before)
 	## Remove duplicate DOIs
 	paper_dois = []
 	for paper in papers:
 		paper_dois.append(paper['doi']) ## if there is a duplicate in paper_dois, pick the later version #.	
+	
+
+	## check if biorxiv papers are already in notion, remove duplicates.
 	non_duplicate_papers = []
 	for paper in papers:
 		if paper['doi'] not in doi_list:
 			non_duplicate_papers.append(paper)
 		else:
 			print("This DOI is already in notion!" + paper['doi'])
-
-	relevance_db_filepath = './data/relevance_db.json'
-	with open(relevance_db_filepath, 'w', encoding='utf8') as f: ## saves in standard biorxiv style json
+	papers_db_filepath = './data/relevance_db.json'
+	with open(papers_db_filepath, 'w', encoding='utf8') as f: ## saves in standard biorxiv style json
 		json.dump(non_duplicate_papers, f, ensure_ascii=False)	
-	non_duplicate_papers = predict_relevance(non_duplicate_papers) ## add predicted relevance.
 
-	for paper in non_duplicate_papers:
+	non_duplicate_papers, papers_with_predictions_db_filepath = predict_relevance(papers_without_predictions_db_filepath = papers_db_filepath) ## add predicted relevance.
+
+	add_papers_to_notion(papers_with_predictions_db_filepath)
+
+
+def add_papers_to_notion(paper_db_filepath='./data/papers_with_predictions_db.json'):
+	with open(paper_db_filepath, 'r', encoding ='utf8') as f:
+		papers = json.load(f)
+	for paper in papers:
 		create_paper_in_notion(notionDatabaseId, notionHeaders,paper)
+
 def readDatabase(skip_abstracts=False):
-	readUrl = f"https://api.notion.com/v1/databases/{databaseId}/query"
+	readUrl = f"https://api.notion.com/v1/databases/{notionDatabaseId}/query"
 	print("requesting notion db")
 	res = requests.request("POST", readUrl, headers=notionHeaders)
 	data = res.json()
@@ -531,7 +553,7 @@ def readDatabase(skip_abstracts=False):
 
 	#print(json.dumps(res.json(),indent=2))
 
-	with open('./notion_db.json', 'w', encoding='utf8') as f: ## saves in notion format, doesn't include abstracts.
+	with open('./data/notion_db.json', 'w', encoding='utf8') as f: ## saves in notion format, doesn't include abstracts.
 		json.dump(results, f, ensure_ascii=False)
 
 	revised_db = translate_notion_to_bioRxiv_format(results,skip_abstracts)
@@ -658,12 +680,14 @@ def train_random_forest_classifier():
 
 	return clf, X_train, X_test, y_train, y_test
 
-def predict_relevance(relevance_db_filepath = './data/relevance_db.json'): ## call this while adding new papers into notion page.
-	with open(relevance_db_filepath, 'r', encoding='utf8') as f:
-		json_dataset = json.load(f)
+def predict_relevance(
+	papers_without_predictions_db_filepath = './data/relevance_db.json',
+	papers_with_predictions_db_filepath = './data/papers_with_predictions_db.json'): ## call this while adding new papers into notion page.
+	with open(papers_without_predictions_db_filepath, 'r', encoding='utf8') as f:
+		papers = json.load(f)
 
 
-	df = create_regression_openai_dataset(relevance_db_filepath)
+	df = create_regression_openai_dataset(papers_without_predictions_db_filepath)
 	df = add_openai_embeddings_to_dataframe(df)
 	#print(df)
 	#df["embedding"] = df.embedding.apply(eval).apply(np.array)  # convert string to array
@@ -680,9 +704,11 @@ def predict_relevance(relevance_db_filepath = './data/relevance_db.json'): ## ca
 	## add those predictions to  the notion db. 
 	#print(predictions)
 
-	for i in range(len(json_dataset)):
-		json_dataset[i]['predicted_relevance'] = predictions[i]
-	return json_dataset
+	for i in range(len(papers)):
+		papers[i]['predicted_relevance'] = predictions[i]
+	with open(papers_with_predictions_db_filepath, 'w', encoding='utf8') as f: ## saves in standard biorxiv style json
+		json.dump(papers, f, ensure_ascii=False)	
+	return papers, papers_with_predictions_db_filepath
 
 
 def train_regressor():
@@ -693,11 +719,17 @@ def train_regressor():
 	
 
 
-#query_bioRxiv("2023-01-02","2023-01-02")
-sync_biorxiv_to_notion("2023-01-03","2023-01-03")
+### The real 2 good functions
+#sync_biorxiv_to_notion("2023-01-03","2023-01-03", refresh_doi_list = True)
 #train_regressor()
+
+
+## some helper step functions.
+#query_bioRxiv("2023-01-02","2023-01-02")
 #readDatabase(True)
 #print(predict_relevance())
+#predict_relevance()
+#add_papers_to_notion()
 
 #with open('./notion_db.json','r',encoding='utf8') as f:
 #	notion_db = json.load(f)
