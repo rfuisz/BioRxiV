@@ -299,6 +299,15 @@ def create_paper_in_notion(databaseId, notionHeaders,paper):
 					}
 				]
 			},
+			"Predicted Relevance": {
+				"rich_text": [
+					{
+						"text": {
+							"content": paper["predicted_relevance"]
+						}
+					}
+				]
+			},
 			"Abstract": {
 				"rich_text": [
 					{
@@ -487,17 +496,20 @@ def sync_biorxiv_to_notion(published_after,published_before):
 		doi_list.append(paper["doi"])
 	papers = query_bioRxiv(published_after,published_before)
 
+	## Remove duplicate DOIs
 	paper_dois = []
 	for paper in papers:
-		paper_dois.append(paper['doi'])
-	## if there is a duplicate in paper_dois, pick the later version #.	
-
+		paper_dois.append(paper['doi']) ## if there is a duplicate in paper_dois, pick the later version #.	
 	non_duplicate_papers = []
 	for paper in papers:
 		if paper['doi'] not in doi_list:
 			non_duplicate_papers.append(paper)
 		else:
 			print("This DOI is already in notion!" + paper['doi'])
+
+
+	non_duplicate_papers = predict_relevance(non_duplicate_papers) ## add predicted relevance.
+
 	for paper in non_duplicate_papers:
 		create_paper_in_notion(notionDatabaseId, notionHeaders,paper)
 def readDatabase(skip_abstracts=False):
@@ -529,12 +541,11 @@ def readDatabase(skip_abstracts=False):
 	print("notion database fully downloaded.")
 	return revised_db
 
-def create_openai_dataset(filename = "data/biorxiv_from_notion_db.json"):
+def create_openai_dataset(json_dataset = "data/biorxiv_from_notion_db.json"):
 	print("preparing dataset.")
 	# embedding model parameters
 	# load & inspect dataset
-	input_datapath = filename  # to save space, we provide a pre-filtered dataset
-	df = pd.read_json(input_datapath)
+	df = pd.read_json(json_dataset)
 	df = df[["doi", "title", "authors", "author_corresponding", "author_corresponding_institution","relevance", "date","category","abstract","url"]]
 	df = df.dropna()
 	df["combined"] = (
@@ -616,8 +627,8 @@ def train_random_forest_classifier():
 
 	return clf, X_train, X_test, y_train, y_test
 
-def predict_relevance(): ## call this while adding new papers into notion page.
-	df = create_openai_dataset("data/biorxiv_db.json")
+def predict_relevance(json_dataset): ## call this while adding new papers into notion page.
+	df = create_openai_dataset(json_dataset)
 	df = add_openai_embeddings_to_dataframe(df)
 	df["embedding"] = df.embedding.apply(eval).apply(np.array)  # convert string to array
 	embeddings = list(df.embedding.values)
@@ -631,17 +642,24 @@ def predict_relevance(): ## call this while adding new papers into notion page.
 	## match those predictions back up to the original DOIs / entries
 
 	## add those predictions to  the notion db. 
+	print(predictions)
+	for i in range(json_dataset):
+		json_dataset[i]['predicted_relevance'] = predictions[i]
+	return json_dataset
 
-#query_bioRxiv("2023-01-02","2023-01-02")
-#sync_biorxiv_to_notion("2023-01-01","2023-01-02")
-#readDatabase(True)
 
 def train_regressor():
+	readDatabase()
 	df = create_openai_dataset()
 	add_openai_embeddings_to_dataframe(df)
 	train_random_forest_classifier()
 	
 
+
+#query_bioRxiv("2023-01-02","2023-01-02")
+sync_biorxiv_to_notion("2023-01-03","2023-01-03")
+#train_regressor()
+#readDatabase(True)
 
 
 #with open('./notion_db.json','r',encoding='utf8') as f:
